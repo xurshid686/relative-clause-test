@@ -1,0 +1,11 @@
+{
+  "name": "relative-clause-test",
+  "version": "1.0.0",
+  "description": "Relative Clause Quiz with Telegram report",
+  "scripts": {
+    "start": "node api/report.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
