@@ -1,4 +1,4 @@
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -11,48 +11,38 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-  const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+  const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+  const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    return res.status(500).json({ error: 'Telegram credentials not configured in environment variables.' });
+  if (!TOKEN || !CHAT_ID) {
+    return res.status(500).json({ error: 'Telegram env vars not set' });
   }
 
   const { studentName, score, total, answers } = req.body;
+  const pct = Math.round((score / total) * 100);
+  const grade = pct >= 90 ? 'A' : pct >= 80 ? 'B' : pct >= 70 ? 'C' : pct >= 60 ? 'D' : 'F';
 
-  const percentage = Math.round((score / total) * 100);
-  const grade = percentage >= 90 ? 'A' : percentage >= 80 ? 'B' : percentage >= 70 ? 'C' : percentage >= 60 ? 'D' : 'F';
+  const wrong = (answers || []).filter(a => !a.correct);
+  const wrongText = wrong.length
+    ? '\n\nWrong Answers:\n' + wrong.map(a => `Q${a.qNum}: chose "${a.chosen}" → correct "${a.correctAnswer}"`).join('\n')
+    : '\n\nAll answers correct!';
 
-  let wrongAnswers = '';
-  if (answers) {
-    const wrong = answers.filter(a => !a.correct);
-    if (wrong.length > 0) {
-      wrongAnswers = '\n\n❌ *Wrong Answers:*\n' + wrong.map(a =>
-        `Q${a.qNum}: Student chose "${a.chosen}" → Correct: "${a.correctAnswer}"`
-      ).join('\n');
-    }
-  }
+  const date = new Date().toLocaleString('en-GB', { timeZone: 'Asia/Tashkent' });
+  const text = `New Quiz Result\n\nStudent: ${studentName}\nScore: ${score}/${total} (${pct}%)\nGrade: ${grade}\nDate: ${date}${wrongText}`;
 
-  const message = `📝 *New Quiz Submission*\n\n👤 *Student:* ${studentName}\n🎯 *Score:* ${score}/${total} (${percentage}%)\n🏅 *Grade:* ${grade}\n📅 *Date:* ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Tashkent' })}${wrongAnswers}`;
+  const url = `https://api.telegram.org/bot${TOKEN}/sendMessage`;
+  const body = JSON.stringify({ chat_id: CHAT_ID, text });
 
   try {
-    const telegramRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        text: message,
-        parse_mode: 'Markdown'
-      })
+      body
     });
-
-    const telegramData = await telegramRes.json();
-    if (!telegramData.ok) {
-      return res.status(500).json({ error: 'Telegram API error', details: telegramData });
-    }
-
-    return res.status(200).json({ success: true, message: 'Report sent to Telegram!' });
-  } catch (err) {
-    return res.status(500).json({ error: 'Failed to send Telegram message', details: err.message });
+    const data = await r.json();
+    if (!data.ok) return res.status(500).json({ error: 'Telegram error', detail: data });
+    return res.status(200).json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
-}
+};
